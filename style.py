@@ -1,7 +1,7 @@
 from __future__ import print_function
 import sys, os, pdb
 sys.path.insert(0, 'src')
-import numpy as np, scipy.misc 
+import numpy as np, scipy.misc
 from optimize import optimize
 from argparse import ArgumentParser
 from utils import save_img, get_img, exists, list_files
@@ -14,7 +14,7 @@ TV_WEIGHT = 2e2
 LEARNING_RATE = 1e-3
 NUM_EPOCHS = 2
 CHECKPOINT_DIR = 'checkpoints'
-CHECKPOINT_ITERATIONS = 2000
+CHECKPOINT_ITERATIONS = 2
 VGG_PATH = 'data/imagenet-vgg-verydeep-19.mat'
 TRAIN_PATH = 'data/train2014'
 BATCH_SIZE = 4
@@ -69,7 +69,7 @@ def build_parser():
                         dest='content_weight',
                         help='content weight (default %(default)s)',
                         metavar='CONTENT_WEIGHT', default=CONTENT_WEIGHT)
-    
+
     parser.add_argument('--style-weight', type=float,
                         dest='style_weight',
                         help='style weight (default %(default)s)',
@@ -79,7 +79,7 @@ def build_parser():
                         dest='tv_weight',
                         help='total variation regularization weight (default %(default)s)',
                         metavar='TV_WEIGHT', default=TV_WEIGHT)
-    
+
     parser.add_argument('--learning-rate', type=float,
                         dest='learning_rate',
                         help='learning rate (default %(default)s)',
@@ -108,13 +108,13 @@ def _get_files(img_dir):
     files = list_files(img_dir)
     return [os.path.join(img_dir,x) for x in files]
 
-    
+
 def main():
     parser = build_parser()
     options = parser.parse_args()
     check_opts(options)
-
-    style_target = get_img(options.style)
+    # style_target = get_img(options.style)
+    style_targets = np.array([get_img(os.path.join(options.style, fname)) for fname in os.listdir(options.style)])
     if not options.slow:
         content_targets = _get_files(options.train_path)
     elif options.test:
@@ -126,7 +126,8 @@ def main():
         "print_iterations":options.checkpoint_iterations,
         "batch_size":options.batch_size,
         "save_path":os.path.join(options.checkpoint_dir,'fns.ckpt'),
-        "learning_rate":options.learning_rate
+        "learning_rate":options.learning_rate,
+        "debug": True
     }
 
     if options.slow:
@@ -137,7 +138,7 @@ def main():
 
     args = [
         content_targets,
-        style_target,
+        style_targets,
         options.content_weight,
         options.style_weight,
         options.tv_weight,

@@ -10,7 +10,7 @@ CONTENT_LAYER = 'relu4_2'
 DEVICES = 'CUDA_VISIBLE_DEVICES'
 
 # np arr, np arr
-def optimize(content_targets, style_target, content_weight, style_weight,
+def optimize(content_targets, style_targets, content_weight, style_weight,
              tv_weight, vgg_path, epochs=2, print_iterations=1000,
              batch_size=4, save_path='saver/fns.ckpt', slow=False,
              learning_rate=1e-3, debug=False):
@@ -19,29 +19,37 @@ def optimize(content_targets, style_target, content_weight, style_weight,
     mod = len(content_targets) % batch_size
     if mod > 0:
         print("Train set has been trimmed slightly..")
-        content_targets = content_targets[:-mod] 
+        content_targets = content_targets[:-mod]
 
-    style_features = {}
-
+    num_of_styles = len(style_targets)
     batch_shape = (batch_size,256,256,3)
-    style_shape = (1,) + style_target.shape
+    style_shape = (1,) + style_targets[0].shape
     print(style_shape)
 
     # precompute style features
-    with tf.Graph().as_default(), tf.device('/cpu:0'), tf.Session() as sess:
+    style_features_per_target=[]
+    graph1 = tf.Graph()
+    with graph1.as_default(), tf.device('/cpu:0'), tf.Session(graph=graph1) as sess:
         style_image = tf.placeholder(tf.float32, shape=style_shape, name='style_image')
         style_image_pre = vgg.preprocess(style_image)
         net = vgg.net(vgg_path, style_image_pre)
-        style_pre = np.array([style_target])
-        for layer in STYLE_LAYERS:
-            features = net[layer].eval(feed_dict={style_image:style_pre})
-            features = np.reshape(features, (-1, features.shape[3]))
-            gram = np.matmul(features.T, features) / features.size
-            style_features[layer] = gram
+        for style_target in style_targets:
+            style_features = {}
+            style_target = style_targets[0]
+            style_pre = np.array([style_target])
 
-    with tf.Graph().as_default(), tf.Session() as sess:
+            for layer in STYLE_LAYERS:
+                features = net[layer].eval(feed_dict={style_image:style_pre})
+                features = np.reshape(features, (-1, features.shape[3]))
+                gram = np.matmul(features.T, features) / features.size
+                style_features[layer] = gram
+            style_features_per_target.append(style_features)
+
+    with tf.Graph().as_default(), tf.Session(graph=graph1) as sess:
         X_content = tf.placeholder(tf.float32, shape=batch_shape, name="X_content")
         X_pre = vgg.preprocess(X_content)
+
+        Style_index_placeholder = tf.placeholder(tf.int32)
 
         # precompute content features
         content_features = {}
@@ -65,31 +73,7 @@ def optimize(content_targets, style_target, content_weight, style_weight,
             net[CONTENT_LAYER] - content_features[CONTENT_LAYER]) / content_size
         )
 
-        style_losses = []
-        for style_layer in STYLE_LAYERS:
-            layer = net[style_layer]
-            bs, height, width, filters = map(lambda i:i.value,layer.get_shape())
-            size = height * width * filters
-            feats = tf.reshape(layer, (bs, height * width, filters))
-            feats_T = tf.transpose(feats, perm=[0,2,1])
-            grams = tf.matmul(feats_T, feats) / size
-            style_gram = style_features[style_layer]
-            style_losses.append(2 * tf.nn.l2_loss(grams - style_gram)/style_gram.size)
 
-        style_loss = style_weight * functools.reduce(tf.add, style_losses) / batch_size
-
-        # total variation denoising
-        tv_y_size = _tensor_size(preds[:,1:,:,:])
-        tv_x_size = _tensor_size(preds[:,:,1:,:])
-        y_tv = tf.nn.l2_loss(preds[:,1:,:,:] - preds[:,:batch_shape[1]-1,:,:])
-        x_tv = tf.nn.l2_loss(preds[:,:,1:,:] - preds[:,:,:batch_shape[2]-1,:])
-        tv_loss = tv_weight*2*(x_tv/tv_x_size + y_tv/tv_y_size)/batch_size
-
-        loss = content_loss + style_loss + tv_loss
-
-        # overall loss
-        train_step = tf.train.AdamOptimizer(learning_rate).minimize(loss)
-        sess.run(tf.global_variables_initializer())
         import random
         uid = random.randint(1, 100)
         print("UID: %s" % uid)
@@ -97,6 +81,41 @@ def optimize(content_targets, style_target, content_weight, style_weight,
             num_examples = len(content_targets)
             iterations = 0
             while iterations * batch_size < num_examples:
+                styleId = np.random.randint(num_of_styles)
+                # Style_index = sess.run(num_op, feed_dict={Style_index_placeholder: styleId})
+                style_features = style_features_per_target[styleId]
+
+######################################
+                style_losses = []
+                for style_layer in STYLE_LAYERS:
+                    layer = net[style_layer]
+                    bs, height, width, filters = map(lambda i:i.value,layer.get_shape())
+                    size = height * width * filters
+                    feats = tf.reshape(layer, (bs, height * width, filters))
+                    feats_T = tf.transpose(feats, perm=[0,2,1])
+                    grams = tf.matmul(feats_T, feats) / size
+                    style_gram = style_features[style_layer]
+                    style_losses.append(2 * tf.nn.l2_loss(grams - style_gram)/style_gram.size)
+
+                style_loss = style_weight * functools.reduce(tf.add, style_losses) / batch_size
+
+                # total variation denoising
+                tv_y_size = _tensor_size(preds[:,1:,:,:])
+                tv_x_size = _tensor_size(preds[:,:,1:,:])
+                y_tv = tf.nn.l2_loss(preds[:,1:,:,:] - preds[:,:batch_shape[1]-1,:,:])
+                x_tv = tf.nn.l2_loss(preds[:,:,1:,:] - preds[:,:,:batch_shape[2]-1,:])
+                tv_loss = tv_weight*2*(x_tv/tv_x_size + y_tv/tv_y_size)/batch_size
+
+                loss = content_loss + style_loss + tv_loss
+
+                # overall loss
+                train_step = tf.train.AdamOptimizer(learning_rate).minimize(loss)
+
+                sess.run(tf.global_variables_initializer())
+
+
+            ##############################
+
                 start_time = time.time()
                 curr = iterations * batch_size
                 step = curr + batch_size
@@ -129,6 +148,7 @@ def optimize(content_targets, style_target, content_weight, style_weight,
 
                     tup = sess.run(to_get, feed_dict = test_feed_dict)
                     _style_loss,_content_loss,_tv_loss,_loss,_preds = tup
+                    print()
                     losses = (_style_loss, _content_loss, _tv_loss, _loss)
                     if slow:
                        _preds = vgg.unprocess(_preds)
