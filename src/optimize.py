@@ -121,8 +121,10 @@ def optimize(content_targets, style_targets, content_weight, style_weight,
                 step = curr + batch_size
                 X_batch = np.zeros(batch_shape, dtype=np.float32)
                 for j, img_p in enumerate(content_targets[curr:step]):
-                   X_batch[j] = get_img(img_p, (256,256,3)).astype(np.float32)
-
+                   try:
+                       X_batch[j] = get_img(img_p, (256,256,3)).astype(np.float32)
+                   except Exception:
+                       continue
                 iterations += 1
                 assert X_batch.shape[0] == batch_size
 
