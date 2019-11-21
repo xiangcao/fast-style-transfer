@@ -138,7 +138,7 @@ def main():
 
     args = [
         content_targets,
-        style_targets,
+        style_targets[:1],
         options.content_weight,
         options.style_weight,
         options.tv_weight,
