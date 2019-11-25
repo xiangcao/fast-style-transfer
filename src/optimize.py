@@ -21,8 +21,6 @@ def optimize(content_targets, style_targets, content_weight, style_weight,
         print("Train set has been trimmed slightly..")
         content_targets = content_targets[:-mod]
 
-    style_features = {}
-
     num_of_styles = len(style_targets)
     # style_target = tf.placeholder(tf.float32, shape=None, name="style_target")
 
@@ -69,9 +67,11 @@ def optimize(content_targets, style_targets, content_weight, style_weight,
         content_loss = content_weight * (2 * tf.nn.l2_loss(
             net[CONTENT_LAYER] - content_features[CONTENT_LAYER]) / content_size
                                          )
-
         style_losses = []
-        style_features = tf.placeholder("float", shape=None)
+
+        styleId = np.random.randint(num_of_styles)
+        # styleId = tf.placeholder(tf.int32, name="styleId")
+        style_features = style_features_per_target[styleId]
         for index, style_layer in enumerate(STYLE_LAYERS):
             layer = net[style_layer]
             bs, height, width, filters = map(lambda i:i.value,layer.get_shape())
@@ -107,21 +107,22 @@ def optimize(content_targets, style_targets, content_weight, style_weight,
                 curr = iterations * batch_size
                 step = curr + batch_size
                 X_batch = np.zeros(batch_shape, dtype=np.float32)
+                styleId = np.random.randint(num_of_styles)
+
+                curr_lambda_style_img = np.ones((256, 256, 1)) * styleId
                 for j, img_p in enumerate(content_targets[curr:step]):
-                    X_batch[j] = get_img(img_p, (256,256,3)).astype(np.float32)
+                    cur_img = get_img(img_p, (256,256,3)).astype(np.float32)
+                    # X_batch[j,:,:,0:3] = curr_img
+                    # X_batch[j,:,:,3:] =  curr_lambda_style_img
 
                 iterations += 1
                 assert X_batch.shape[0] == batch_size
 
-                styleId = np.random.randint(num_of_styles)
-
+                # selection_vector = np.array([int(i == styleId) for i in range(10)])
                 feed_dict = {
                     X_content:X_batch,
-                    style_features:style_features_per_target[styleId]
+                    #styleId: styleId,
                 }
-
-                import pdb
-                pdb.set_trace()
 
                 train_step.run(feed_dict=feed_dict)
                 end_time = time.time()

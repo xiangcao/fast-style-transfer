@@ -114,7 +114,7 @@ def main():
     options = parser.parse_args()
     check_opts(options)
     # style_target = get_img(options.style)
-    style_targets = np.array([get_img(os.path.join(options.style, fname)) for fname in os.listdir(options.style)])
+    style_targets = np.array([get_img(os.path.join(options.style, fname), (256,256,3)) for fname in os.listdir(options.style)])
     if not options.slow:
         content_targets = _get_files(options.train_path)
     elif options.test:
@@ -138,7 +138,7 @@ def main():
 
     args = [
         content_targets,
-        style_targets[:1],
+        style_targets,
         options.content_weight,
         options.style_weight,
         options.tv_weight,
