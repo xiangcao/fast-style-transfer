@@ -126,7 +126,10 @@ def optimize(content_targets, style_targets, content_weight, style_weight,
                 X_batch = np.zeros(batch_shape, dtype=np.float32)
 
                 print("styleId chosen: %s" % styleId)
-                curr_style_id_img = np.ones((256, 256, 1)) * styleId
+                # curr_style_id_img = np.ones((256, 256, 1)) * styleId
+
+                selection_vector = np.array([int(i == styleId) for i in range(num_of_styles)])
+                curr_style_id_img = np.resize(selection_vector, [256,256,1])
                 for j, img_p in enumerate(content_targets[curr:step]):
                     cur_img = get_img(img_p, (256,256,3)).astype(np.float32)
                     X_batch[j,:,:,0:3] = cur_img
@@ -135,7 +138,6 @@ def optimize(content_targets, style_targets, content_weight, style_weight,
                 iterations += 1
                 assert X_batch.shape[0] == batch_size
 
-                # selection_vector = np.array([int(i == styleId) for i in range(10)])
                 feed_dict = {
                     X_content:X_batch,
                     style_image: np.array([styleTarget]),

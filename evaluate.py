@@ -65,7 +65,9 @@ def ffwd(data_in, paths_out, checkpoint_dir, target_style_img_id, device_t='/gpu
                         'Resize images or use --allow-different-dimensions.'
                     X[j,:,:,0:3] = img
                     print('Test style target Id: {}'.format(target_style_img_id))
-                    curr_style_id_img = np.ones((img_shape[0], img_shape[1], 1)) * target_style_img_id
+                    # curr_style_id_img = np.ones((img_shape[0], img_shape[1], 1)) * target_style_img_id
+                    selection_vector = np.array([int(i == target_style_img_id) for i in range(num_of_styles)])
+                    curr_style_id_img = np.resize(selection_vector, [256,256,1])
                     X[j, :, :, 3:] = curr_style_id_img
             else:
                 X = data_in[pos:pos+batch_size]
