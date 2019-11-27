@@ -117,14 +117,14 @@ def optimize(content_targets, style_targets, content_weight, style_weight,
         for epoch in range(epochs):
             num_examples = len(content_targets)
             iterations = 0
+            styleId = np.random.randint(num_of_styles)
+            styleTarget = style_targets[styleId]
             while iterations * batch_size < num_examples:
                 start_time = time.time()
                 curr = iterations * batch_size
                 step = curr + batch_size
                 X_batch = np.zeros(batch_shape, dtype=np.float32)
 
-                styleId = np.random.randint(num_of_styles)
-                styleTarget = style_targets[styleId]
                 print("styleId chosen: %s" % styleId)
                 curr_style_id_img = np.ones((256, 256, 1)) * styleId
                 for j, img_p in enumerate(content_targets[curr:step]):
@@ -147,11 +147,15 @@ def optimize(content_targets, style_targets, content_weight, style_weight,
                 if debug:
                     print("UID: %s, batch time: %s" % (uid, delta_time))
                 is_print_iter = int(iterations) % print_iterations == 0
+                if int(iterations) % print_iterations == 0:
+                    styleId = np.random.randint(num_of_styles)
+                    styleTarget = style_targets[styleId]
                 if slow:
                     is_print_iter = epoch % print_iterations == 0
                 is_last = epoch == epochs - 1 and iterations * batch_size >= num_examples
                 should_print = is_print_iter or is_last
                 if should_print:
+
                     to_get = [style_loss, content_loss, tv_loss, loss, preds]
                     test_feed_dict = {
                         X_content:X_batch,

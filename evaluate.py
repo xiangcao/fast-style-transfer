@@ -45,6 +45,7 @@ def ffwd(data_in, paths_out, checkpoint_dir, target_style_img_id, device_t='/gpu
             ckpt = tf.train.get_checkpoint_state(checkpoint_dir)
             if ckpt and ckpt.model_checkpoint_path:
                 saver.restore(sess, ckpt.model_checkpoint_path)
+                # saver.restore(sess, checkpoint_dir+'/fns.ckpt')
             else:
                 raise Exception("No checkpoint found...")
         else:
