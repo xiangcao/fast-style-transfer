@@ -17,12 +17,13 @@ DEVICE = '/gpu:0'
 
 
 # get img_shape
-def ffwd(data_in, paths_out, checkpoint_dir, device_t='/gpu:0', batch_size=4):
+def ffwd(data_in, paths_out, checkpoint_dir, target_style_img_id, device_t='/gpu:0', batch_size=4):
     assert len(paths_out) > 0
     is_paths = type(data_in[0]) == str
     if is_paths:
         assert len(data_in) == len(paths_out)
         img_shape = get_img(data_in[0]).shape
+        final_img_shape = (img_shape[0], img_shape[1], 4)
     else:
         assert data_in.size[0] == len(paths_out)
         img_shape = X[0].shape
@@ -34,7 +35,7 @@ def ffwd(data_in, paths_out, checkpoint_dir, device_t='/gpu:0', batch_size=4):
     soft_config.gpu_options.allow_growth = True
     with g.as_default(), g.device(device_t), \
             tf.Session(config=soft_config) as sess:
-        batch_shape = (batch_size,) + img_shape
+        batch_shape = (batch_size,) + final_img_shape
         img_placeholder = tf.placeholder(tf.float32, shape=batch_shape,
                                          name='img_placeholder')
 
@@ -61,25 +62,28 @@ def ffwd(data_in, paths_out, checkpoint_dir, device_t='/gpu:0', batch_size=4):
                     assert img.shape == img_shape, \
                         'Images have different dimensions. ' +  \
                         'Resize images or use --allow-different-dimensions.'
-                    X[j] = img
+                    X[j,:,:,0:3] = img
+                    print('Test style target Id: {}'.format(target_style_img_id))
+                    curr_style_id_img = np.ones((img_shape[0], img_shape[1], 1)) * target_style_img_id
+                    X[j, :, :, 3:] = curr_style_id_img
             else:
                 X = data_in[pos:pos+batch_size]
 
             _preds = sess.run(preds, feed_dict={img_placeholder:X})
             for j, path_out in enumerate(curr_batch_out):
                 save_img(path_out, _preds[j])
-                
+
         remaining_in = data_in[num_iters*batch_size:]
         remaining_out = paths_out[num_iters*batch_size:]
     if len(remaining_in) > 0:
-        ffwd(remaining_in, remaining_out, checkpoint_dir, 
+        ffwd(remaining_in, remaining_out, checkpoint_dir,
             device_t=device_t, batch_size=1)
 
-def ffwd_to_img(in_path, out_path, checkpoint_dir, device='/cpu:0'):
+def ffwd_to_img(in_path, out_path, checkpoint_dir, target_style_img_id, device='/cpu:0'):
     paths_in, paths_out = [in_path], [out_path]
-    ffwd(paths_in, paths_out, checkpoint_dir, batch_size=1, device_t=device)
+    ffwd(paths_in, paths_out, checkpoint_dir, target_style_img_id, batch_size=1, device_t=device)
 
-def ffwd_different_dimensions(in_path, out_path, checkpoint_dir, 
+def ffwd_different_dimensions(in_path, out_path, checkpoint_dir,
             device_t=DEVICE, batch_size=4):
     in_path_of_shape = defaultdict(list)
     out_path_of_shape = defaultdict(list)
@@ -91,7 +95,7 @@ def ffwd_different_dimensions(in_path, out_path, checkpoint_dir,
         out_path_of_shape[shape].append(out_image)
     for shape in in_path_of_shape:
         print('Processing images of shape %s' % shape)
-        ffwd(in_path_of_shape[shape], out_path_of_shape[shape], 
+        ffwd(in_path_of_shape[shape], out_path_of_shape[shape],
             checkpoint_dir, device_t, batch_size)
 
 def build_parser():
@@ -119,8 +123,12 @@ def build_parser():
                         metavar='BATCH_SIZE', default=BATCH_SIZE)
 
     parser.add_argument('--allow-different-dimensions', action='store_true',
-                        dest='allow_different_dimensions', 
+                        dest='allow_different_dimensions',
                         help='allow different image dimensions')
+
+    parser.add_argument('--style-image-id', type=int,
+                        dest='style_image_id', help='id of style image to transfer',
+                        metavar='STYLE_IMAGE_ID', required=True)
 
     return parser
 
@@ -143,14 +151,14 @@ def main():
         else:
             out_path = opts.out_path
 
-        ffwd_to_img(opts.in_path, out_path, opts.checkpoint_dir,
+        ffwd_to_img(opts.in_path, out_path, opts.checkpoint_dir, target_style_img_id=opts.style_image_id,
                     device=opts.device)
     else:
         files = list_files(opts.in_path)
         full_in = [os.path.join(opts.in_path,x) for x in files]
         full_out = [os.path.join(opts.out_path,x) for x in files]
         if opts.allow_different_dimensions:
-            ffwd_different_dimensions(full_in, full_out, opts.checkpoint_dir, 
+            ffwd_different_dimensions(full_in, full_out, opts.checkpoint_dir,
                     device_t=opts.device, batch_size=opts.batch_size)
         else :
             ffwd(full_in, full_out, opts.checkpoint_dir, device_t=opts.device,

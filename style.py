@@ -155,9 +155,10 @@ def main():
             assert options.test_dir != False
             preds_path = '%s/%s_%s.png' % (options.test_dir,epoch,i)
             if not options.slow:
+                style_image_id = styleId = np.random.randint(len(style_targets))
                 ckpt_dir = os.path.dirname(options.checkpoint_dir)
                 evaluate.ffwd_to_img(options.test,preds_path,
-                                     options.checkpoint_dir)
+                                     options.checkpoint_dir, style_image_id)
             else:
                 save_img(preds_path, img)
     ckpt_dir = options.checkpoint_dir

@@ -24,27 +24,46 @@ def optimize(content_targets, style_targets, content_weight, style_weight,
     num_of_styles = len(style_targets)
     # style_target = tf.placeholder(tf.float32, shape=None, name="style_target")
 
-    batch_shape = (batch_size,256,256,3)
-
+    batch_shape = (batch_size,256,256,4)
+    style_shape = (1, 256, 256, 3)
     # precompute style features
+    style_features = {}
+    # precompute style features
+
+    """
+    style_target = style_targets[0]
     with tf.Graph().as_default(), tf.device('/cpu:0'), tf.Session() as sess:
-        style_image = tf.placeholder(tf.float32, shape=None, name='style_image')
+        # lambda_style = tf.placeholder(tf.float32, name="lambda_style")
+        style_image = tf.placeholder(tf.float32, shape=style_shape, name='style_image')
         style_image_pre = vgg.preprocess(style_image)
         net = vgg.net(vgg_path, style_image_pre)
-        style_features_per_target=[]
-        for style_target in style_targets:
-            style_features = []
-            style_pre = np.array([style_target])
-            for layer in STYLE_LAYERS:
-                features = net[layer].eval(feed_dict={style_image:style_pre})
-                features = np.reshape(features, (-1, features.shape[3]))
-                gram = np.matmul(features.T, features) / features.size
-                style_features.append(gram)
-            style_features_per_target.append(style_features)
+        style_pre = np.array([style_target])
+        for layer in STYLE_LAYERS:
+            features = net[layer].eval(feed_dict={style_image:style_pre})
+            import pdb
+            pdb.set_trace()
+            features = np.reshape(features, (-1, features.shape[3]))
+            gram = np.matmul(features.T, features) / features.size
+            style_features[layer] = gram
+    """
 
     with tf.Graph().as_default(), tf.Session() as sess:
+        style_image = tf.placeholder(tf.float32, shape=style_shape, name='style_image')
+        style_image_pre = vgg.preprocess(style_image)
+        style_net = vgg.net(vgg_path, style_image_pre)
+        for layer in STYLE_LAYERS:
+            features = style_net[layer]
+            _, height, width, filters = map(lambda i:i.value,features.get_shape())
+            size = height * width * filters
+            features = tf.reshape(features, (1, height * width, filters))
+            features_T = tf.transpose(features, perm=[0,2,1])
+            gram = tf.matmul(features_T, features) / size
+            # features = np.reshape(features, (-1, features.shape[3]))
+            # gram = np.matmul(features.T, features) / features.size
+            style_features[layer] = gram
+    # with tf.Graph().as_default(), tf.Session() as sess:
         X_content = tf.placeholder(tf.float32, shape=batch_shape, name="X_content")
-        X_pre = vgg.preprocess(X_content)
+        X_pre = vgg.preprocess(X_content[:,:,:,0:3])
 
         # precompute content features
         content_features = {}
@@ -68,19 +87,15 @@ def optimize(content_targets, style_targets, content_weight, style_weight,
             net[CONTENT_LAYER] - content_features[CONTENT_LAYER]) / content_size
                                          )
         style_losses = []
-
-        styleId = np.random.randint(num_of_styles)
-        # styleId = tf.placeholder(tf.int32, name="styleId")
-        style_features = style_features_per_target[styleId]
-        for index, style_layer in enumerate(STYLE_LAYERS):
+        for style_layer in STYLE_LAYERS:
             layer = net[style_layer]
             bs, height, width, filters = map(lambda i:i.value,layer.get_shape())
             size = height * width * filters
             feats = tf.reshape(layer, (bs, height * width, filters))
             feats_T = tf.transpose(feats, perm=[0,2,1])
             grams = tf.matmul(feats_T, feats) / size
-            style_gram = style_features[index]
-            style_losses.append(2 * tf.nn.l2_loss(grams - style_gram))
+            style_gram = style_features[style_layer]
+            style_losses.append(2 * tf.nn.l2_loss(grams - style_gram)/size)
 
         style_loss = style_weight * functools.reduce(tf.add, style_losses) / batch_size
 
@@ -107,13 +122,15 @@ def optimize(content_targets, style_targets, content_weight, style_weight,
                 curr = iterations * batch_size
                 step = curr + batch_size
                 X_batch = np.zeros(batch_shape, dtype=np.float32)
-                styleId = np.random.randint(num_of_styles)
 
-                curr_lambda_style_img = np.ones((256, 256, 1)) * styleId
+                styleId = np.random.randint(num_of_styles)
+                styleTarget = style_targets[styleId]
+                print("styleId chosen: %s" % styleId)
+                curr_style_id_img = np.ones((256, 256, 1)) * styleId
                 for j, img_p in enumerate(content_targets[curr:step]):
                     cur_img = get_img(img_p, (256,256,3)).astype(np.float32)
-                    # X_batch[j,:,:,0:3] = curr_img
-                    # X_batch[j,:,:,3:] =  curr_lambda_style_img
+                    X_batch[j,:,:,0:3] = cur_img
+                    X_batch[j,:,:,3:] =  curr_style_id_img
 
                 iterations += 1
                 assert X_batch.shape[0] == batch_size
@@ -121,7 +138,7 @@ def optimize(content_targets, style_targets, content_weight, style_weight,
                 # selection_vector = np.array([int(i == styleId) for i in range(10)])
                 feed_dict = {
                     X_content:X_batch,
-                    #styleId: styleId,
+                    style_image: np.array([styleTarget]),
                 }
 
                 train_step.run(feed_dict=feed_dict)
@@ -137,7 +154,8 @@ def optimize(content_targets, style_targets, content_weight, style_weight,
                 if should_print:
                     to_get = [style_loss, content_loss, tv_loss, loss, preds]
                     test_feed_dict = {
-                        X_content:X_batch
+                        X_content:X_batch,
+                        style_image: np.array([styleTarget]),
                     }
 
                     tup = sess.run(to_get, feed_dict = test_feed_dict)
