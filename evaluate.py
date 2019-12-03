@@ -17,12 +17,12 @@ DEVICE = '/gpu:0'
 
 
 # get img_shape
-def ffwd(data_in, paths_out, checkpoint_dir, target_style_img_id, device_t='/gpu:0', batch_size=4):
+def ffwd(data_in, paths_out, checkpoint_dir, num_styles, target_style_img_id, device_t='/gpu:0', batch_size=4):
     assert len(paths_out) > 0
     is_paths = type(data_in[0]) == str
     if is_paths:
         assert len(data_in) == len(paths_out)
-        img_shape = get_img(data_in[0]).shape
+        img_shape = get_img(data_in[0],(256,256,3)).astype(np.float32).shape
         final_img_shape = (img_shape[0], img_shape[1], 4)
     else:
         assert data_in.size[0] == len(paths_out)
@@ -44,8 +44,8 @@ def ffwd(data_in, paths_out, checkpoint_dir, target_style_img_id, device_t='/gpu
         if os.path.isdir(checkpoint_dir):
             ckpt = tf.train.get_checkpoint_state(checkpoint_dir)
             if ckpt and ckpt.model_checkpoint_path:
-                saver.restore(sess, ckpt.model_checkpoint_path)
-                # saver.restore(sess, checkpoint_dir+'/fns.ckpt')
+                # saver.restore(sess, ckpt.model_checkpoint_path)
+                saver.restore(sess, checkpoint_dir+'/fns.ckpt')
             else:
                 raise Exception("No checkpoint found...")
         else:
@@ -59,14 +59,14 @@ def ffwd(data_in, paths_out, checkpoint_dir, target_style_img_id, device_t='/gpu
                 curr_batch_in = data_in[pos:pos+batch_size]
                 X = np.zeros(batch_shape, dtype=np.float32)
                 for j, path_in in enumerate(curr_batch_in):
-                    img = get_img(path_in)
+                    img = get_img(path_in, (256,256,3)).astype(np.float32)
                     assert img.shape == img_shape, \
                         'Images have different dimensions. ' +  \
                         'Resize images or use --allow-different-dimensions.'
                     X[j,:,:,0:3] = img
                     print('Test style target Id: {}'.format(target_style_img_id))
                     # curr_style_id_img = np.ones((img_shape[0], img_shape[1], 1)) * target_style_img_id
-                    selection_vector = np.array([int(i == target_style_img_id) for i in range(num_of_styles)])
+                    selection_vector = np.array([int(i == target_style_img_id) for i in range(num_styles)])
                     curr_style_id_img = np.resize(selection_vector, [256,256,1])
                     X[j, :, :, 3:] = curr_style_id_img
             else:
@@ -82,9 +82,9 @@ def ffwd(data_in, paths_out, checkpoint_dir, target_style_img_id, device_t='/gpu
         ffwd(remaining_in, remaining_out, checkpoint_dir,
             device_t=device_t, batch_size=1)
 
-def ffwd_to_img(in_path, out_path, checkpoint_dir, target_style_img_id, device='/cpu:0'):
+def ffwd_to_img(in_path, out_path, checkpoint_dir, num_styles, target_style_img_id, device='/cpu:0'):
     paths_in, paths_out = [in_path], [out_path]
-    ffwd(paths_in, paths_out, checkpoint_dir, target_style_img_id, batch_size=1, device_t=device)
+    ffwd(paths_in, paths_out, checkpoint_dir, num_styles, target_style_img_id, batch_size=1, device_t=device)
 
 def ffwd_different_dimensions(in_path, out_path, checkpoint_dir,
             device_t=DEVICE, batch_size=4):
@@ -133,6 +133,10 @@ def build_parser():
                         dest='style_image_id', help='id of style image to transfer',
                         metavar='STYLE_IMAGE_ID', required=True)
 
+    parser.add_argument('--style', type=str,
+                        dest='style', help='style image path',
+                        metavar='STYLE', required=True)
+
     return parser
 
 def check_opts(opts):
@@ -153,8 +157,8 @@ def main():
                     os.path.join(opts.out_path,os.path.basename(opts.in_path))
         else:
             out_path = opts.out_path
-
-        ffwd_to_img(opts.in_path, out_path, opts.checkpoint_dir, target_style_img_id=opts.style_image_id,
+        num_styles = len([fname for fname in os.listdir(opts.style)])
+        ffwd_to_img(opts.in_path, out_path, opts.checkpoint_dir, num_styles = num_styles, target_style_img_id=opts.style_image_id,
                     device=opts.device)
     else:
         files = list_files(opts.in_path)
